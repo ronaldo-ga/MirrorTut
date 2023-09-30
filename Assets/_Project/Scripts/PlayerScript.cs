@@ -12,6 +12,8 @@ namespace QuickStart
 
         private Material playerMaterialClone;
         private SceneScript sceneScript;
+        private Weapon activeWeapon;
+        private float weaponCooldownTime;
         private int selectedWeaponLocal = 1;
 
         [SyncVar(hook = nameof(OnNameChanged))]
@@ -25,11 +27,18 @@ namespace QuickStart
 
         void Awake()
         {
-            sceneScript = GameObject.FindObjectOfType<SceneScript>();
+            sceneScript = GameObject.Find("SceneReference").GetComponent<SceneReference>().sceneScript;
 
             foreach (var item in weaponArray)
                 if (item != null)
                     item.SetActive(false);
+
+            if (selectedWeaponLocal < weaponArray.Length && weaponArray[selectedWeaponLocal] != null)
+            {
+                activeWeapon = weaponArray[selectedWeaponLocal].GetComponent<Weapon>();
+                sceneScript.UIAmmo(activeWeapon.weaponAmmo);
+            }
+
         }
 
         void Update()
@@ -57,6 +66,17 @@ namespace QuickStart
 
                 CmdChangeActiveWeapon(selectedWeaponLocal);
             }
+
+            if (Input.GetButtonDown("Fire1"))
+            {
+                if (activeWeapon && Time.time > weaponCooldownTime && activeWeapon.weaponAmmo > 0)
+                {
+                    weaponCooldownTime = Time.time + activeWeapon.weaponCooldown;
+                    activeWeapon.weaponAmmo -= 1;
+                    sceneScript.UIAmmo(activeWeapon.weaponAmmo);
+                    CmdShootRay();
+                }
+            }
         }
 
         [Command]
@@ -80,6 +100,20 @@ namespace QuickStart
         public void CmdChangeActiveWeapon(int newIndex)
         {
             activeWeaponSynced = newIndex;
+        }
+
+        [Command]
+        void CmdShootRay()
+        {
+            RpcFireWeapon();
+        }
+
+        [ClientRpc]
+        void RpcFireWeapon()
+        {
+            GameObject bullet = Instantiate(activeWeapon.weaponBullet, activeWeapon.weaponFirePosition.position, activeWeapon.weaponFirePosition.rotation);
+            bullet.GetComponent<Rigidbody>().velocity = bullet.transform.forward * activeWeapon.weaponSpeed;
+            Destroy(bullet, activeWeapon.weaponLife);
         }
 
         public override void OnStartLocalPlayer()
@@ -120,6 +154,13 @@ namespace QuickStart
             if (0 < _New && _New < weaponArray.Length && weaponArray[_New] != null)
             {
                 weaponArray[_New].SetActive(true);
+                activeWeapon = weaponArray[activeWeaponSynced].GetComponent<Weapon>();
+
+                if (isLocalPlayer)
+                {
+                    sceneScript.UIAmmo(activeWeapon.weaponAmmo);
+                }
+
             }
         }
     }
